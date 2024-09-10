@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const saltRounds = 10;
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 
 const userSchema = mongoose.Schema({
     name: {
@@ -17,26 +16,16 @@ const userSchema = mongoose.Schema({
         type: String,
         minlength: 5,
     },
-    phoneNumber: {
-        type: String,
-        maxlength : 20,
-        unique: true, // Ensures phone number is unique
-        required: [true, 'Phone number is required'],
-    },
-    birthdate: {
-        type: Date,
-    },
     role: {
         type: Number,
         default: 0,
     },
-    image: String,
-    token: {
+    phoneNumber: {
         type: String,
+        maxlength: 12,
     },
-    tokenExp: {
-        type: Number,
-    },
+    image: String,
+    // 토큰 및 토큰 만료 관련 필드 제거
 });
 
 // 비밀번호 암호화
@@ -64,20 +53,6 @@ userSchema.methods.comparePassword = function (candidatePassword) {
             resolve(isMatch);
         });
     });
-};
-
-// 토큰 생성 메소드
-userSchema.methods.generateToken = async function () {
-    const user = this;
-    const token = jwt.sign({ _id: user._id.toHexString() }, 'your_jwt_secret');
-    user.token = token;
-
-    try {
-        await user.save();
-        return token;
-    } catch (err) {
-        throw new Error('Token 생성 및 저장 오류: ' + err.message);
-    }
 };
 
 const User = mongoose.model("User", userSchema);
