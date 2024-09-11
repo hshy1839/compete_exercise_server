@@ -13,7 +13,7 @@ const JWT_SECRET = 'your-secret-key'; // 비밀 키 (환경 변수로 설정하�
 connectDB();
 app.use(cors({
   origin: '*', // CORS 설정 시 도메인과 포트 일치
-  methods: ['GET', 'POST', 'PUT'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
   optionsSuccessStatus: 200,
 }));
@@ -66,6 +66,17 @@ app.post('/api/users/signup', async (req, res) => {
     return res.status(200).json({ success: true, token });
   } catch (err) {
     console.error('회원가입 실패:', err);
+
+    // 중복 키 에러 처리
+    if (err.code === 11000) {
+      // 중복된 필드명 추출
+      const duplicatedField = Object.keys(err.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `이미 사용 중인 ${duplicatedField}입니다.`,
+      });
+    }
+
     return res.status(500).json({ success: false, err });
   }
 });
@@ -170,19 +181,19 @@ app.get('/api/users/planinfo', async (req, res) => {
 
       console.log('Decoded User ID:', decoded.userId); // 디버그용 로그
 
-      // 모든 사용자의 운동 계획 조회
-      const plans = await Planning.find({});
-      if (!plans || plans.length === 0) {
-        return res.status(404).json({ success: false, message: 'No planning found' });
-      }
+      try {
+        // 모든 사용자의 운동 계획 조회
+        const plans = await Planning.find({});
+        if (!plans || plans.length === 0) {
+          return res.status(404).json({ success: false, message: 'No planning found' });
+        }
 
-      // 계획이 여러 개일 수 있으므로 배열로 응답
-      res.status(200).json({
-        success: true,
-        plans: await Promise.all(plans.map(async (plan) => {
-          const user = await User.findById(plan.userId).select('username');
+        // 계획이 여러 개일 수 있으므로 배열로 응답
+        const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
+          const user = await User.findById(plan.userId).select('nickname'); // 'nickname'을 정확히 선택합니다.
           return {
-            username: user ? user.username : 'Unknown User',
+            _id: plan._id,
+            nickname: user ? user.nickname : 'Unknown User', // 'nickname'으로 변경
             selected_date: plan.selected_date,
             selected_startTime: plan.selected_startTime,
             selected_endTime: plan.selected_endTime,
@@ -190,14 +201,20 @@ app.get('/api/users/planinfo', async (req, res) => {
             selected_exercise: plan.selected_exercise,
             selected_location: plan.selected_location,
           };
-        })),
-      });
+        }));
+
+        return res.status(200).json({ success: true, plans: plansWithUserDetails });
+      } catch (fetchError) {
+        console.error('계획 정보 조회 실패:', fetchError);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+      }
     });
   } catch (err) {
     console.error('계획 정보 조회 실패:', err);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
 
 // 사용자 정보 수정
 app.put('/api/users/userinfo', async (req, res) => {
@@ -247,3 +264,46 @@ app.put('/api/users/userinfo', async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
+// 닉네임 검색 라우트
+app.get('/api/users/search', async (req, res) => {
+  const nickname = req.query.nickname;
+
+  try {
+    const users = await User.find({ nickname: { $regex: nickname, $options: 'i' } }); // 대소문자 구분없이 검색
+    res.json(users);
+  } catch (error) {
+    res.status(500).send('Error fetching users');
+  }
+});
+
+// 운동 계획 삭제
+
+app.delete('/api/users/planning/:id', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+
+    // 요청 파라미터에서 운동 계획 ID 추출
+    const planId = req.params.id;
+
+    // 해당 계획을 완전히 삭제
+    const result = await Planning.findOneAndDelete({ _id: planId, userId });
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: '운동 계획을 찾을 수 없습니다.' });
+    }
+
+    res.status(200).json({ success: true, message: '운동 계획이 성공적으로 삭제되었습니다.' });
+  } catch (err) {
+    console.error('운동 계획 삭제 실패:', err);
+    res.status(500).json({ success: false, message: '운동 계획 삭제 실패' });
+  }
+});
+

@@ -10,11 +10,12 @@ const userSchema = mongoose.Schema({
     nickname: {
         type: String,
         maxlength: 12,
+        unique: true,
     },
     username: {
         type: String,
         trim: true,
-        unique: 1,
+        unique: true,
     },
     password: {
         type: String,
@@ -27,6 +28,7 @@ const userSchema = mongoose.Schema({
     phoneNumber: {
         type: String,
         maxlength: 12,
+        unique: true,
     },
     image: String,
     // 토큰 및 토큰 만료 관련 필드 제거
