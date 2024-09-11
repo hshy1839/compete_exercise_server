@@ -13,7 +13,7 @@ const JWT_SECRET = 'your-secret-key'; // 비밀 키 (환경 변수로 설정하�
 connectDB();
 app.use(cors({
   origin: '*', // CORS 설정 시 도메인과 포트 일치
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT'],
   credentials: true,
   optionsSuccessStatus: 200,
 }));
@@ -102,6 +102,7 @@ app.get('/api/users/userinfo', async (req, res) => {
       res.status(200).json({
         success: true,
         username: user.username, 
+        nickname: user.nickname,
         phoneNumber: user.phoneNumber,
         birthdate: birthdate, // formatted birthdate
         name: user.name, 
@@ -194,6 +195,55 @@ app.get('/api/users/planinfo', async (req, res) => {
     });
   } catch (err) {
     console.error('계획 정보 조회 실패:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// 사용자 정보 수정
+app.put('/api/users/userinfo', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const userId = decoded.userId;
+      const { name, nickname, phoneNumber, birthdate } = req.body;
+
+      // 사용자 정보 업데이트
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { name, nickname, phoneNumber, birthdate },
+        { new: true } // 업데이트된 사용자 정보를 반환
+      );
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'User information updated successfully',
+        user: {
+          name: user.name,
+          nickname: user.nickname,
+          phoneNumber: user.phoneNumber,
+          birthdate: user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null,
+        },
+      });
+    });
+  } catch (err) {
+    console.error('사용자 정보 수정 실패:', err);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

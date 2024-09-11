@@ -7,6 +7,10 @@ const userSchema = mongoose.Schema({
         type: String,
         maxlength: 50,
     },
+    nickname: {
+        type: String,
+        maxlength: 12,
+    },
     username: {
         type: String,
         trim: true,
