@@ -104,10 +104,7 @@ app.get('/api/users/userinfo', async (req, res) => {
         return res.status(404).json({ success: false, message: 'User not found' });
       }
 
-      // Debugging output
-      console.log('User birthdate:', user.birthdate); // Check if birthdate is null or valid
-
-      // Format birthdate to ISO 8601 string if it's not null
+       // Format birthdate to ISO 8601 string if it's not null
       const birthdate = user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null;
 
       res.status(200).json({
@@ -178,8 +175,6 @@ app.get('/api/users/planinfo', async (req, res) => {
       if (err) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
-
-      console.log('Decoded User ID:', decoded.userId); // 디버그용 로그
 
       try {
         // 모든 사용자의 운동 계획 조회
