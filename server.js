@@ -93,13 +93,26 @@ app.get('/api/users/userinfo', async (req, res) => {
         return res.status(404).json({ success: false, message: 'User not found' });
       }
 
-      res.status(200).json({ success: true, username: user.username, phoneNumber: user.phoneNumber });
+      // Debugging output
+      console.log('User birthdate:', user.birthdate); // Check if birthdate is null or valid
+
+      // Format birthdate to ISO 8601 string if it's not null
+      const birthdate = user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null;
+
+      res.status(200).json({
+        success: true,
+        username: user.username, 
+        phoneNumber: user.phoneNumber,
+        birthdate: birthdate, // formatted birthdate
+        name: user.name, 
+      });
     });
   } catch (err) {
     console.error('사용자 정보 조회 실패:', err);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
 
 // 운동 계획 추가
 app.post('/api/users/planning', async (req, res) => {
@@ -135,3 +148,52 @@ app.post('/api/users/planning', async (req, res) => {
   }
 });
 
+
+// 운동 계획 조회
+app.get('/api/users/planinfo', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      console.log('Decoded User ID:', decoded.userId); // 디버그용 로그
+
+      // 모든 사용자의 운동 계획 조회
+      const plans = await Planning.find({});
+      if (!plans || plans.length === 0) {
+        return res.status(404).json({ success: false, message: 'No planning found' });
+      }
+
+      // 계획이 여러 개일 수 있으므로 배열로 응답
+      res.status(200).json({
+        success: true,
+        plans: await Promise.all(plans.map(async (plan) => {
+          const user = await User.findById(plan.userId).select('username');
+          return {
+            username: user ? user.username : 'Unknown User',
+            selected_date: plan.selected_date,
+            selected_startTime: plan.selected_startTime,
+            selected_endTime: plan.selected_endTime,
+            selected_participants: plan.selected_participants,
+            selected_exercise: plan.selected_exercise,
+            selected_location: plan.selected_location,
+          };
+        })),
+      });
+    });
+  } catch (err) {
+    console.error('계획 정보 조회 실패:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});

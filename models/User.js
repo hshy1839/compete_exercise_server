@@ -26,6 +26,10 @@ const userSchema = mongoose.Schema({
     },
     image: String,
     // 토큰 및 토큰 만료 관련 필드 제거
+    birthdate: {
+        type: Date,
+        default: null
+    }
 });
 
 // 비밀번호 암호화
