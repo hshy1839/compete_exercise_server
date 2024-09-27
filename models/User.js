@@ -35,8 +35,11 @@ const userSchema = mongoose.Schema({
     birthdate: {
         type: Date,
         default: null
-    }
+    },
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // 팔로워 목록
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // 팔로잉 목록
 });
+
 
 // 비밀번호 암호화
 userSchema.pre("save", function (next) {
@@ -68,3 +71,4 @@ userSchema.methods.comparePassword = function (candidatePassword) {
 const User = mongoose.model("User", userSchema);
 
 module.exports = { User };
+

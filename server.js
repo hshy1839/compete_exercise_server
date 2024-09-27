@@ -6,6 +6,8 @@ const { Planning } = require('./models/Planning.js');
 const bodyParser = require('body-parser');
 const app = express();
 const cors = require('cors');
+const mongoose = require('mongoose');
+
 
 const JWT_SECRET = 'your-secret-key'; // 비밀 키 (환경 변수로 설정하는 것이 좋습니다)
 
@@ -263,14 +265,46 @@ app.put('/api/users/userinfo', async (req, res) => {
 // 닉네임 검색 라우트
 app.get('/api/users/search', async (req, res) => {
   const nickname = req.query.nickname;
+  
+  // 사용자 인증 토큰 처리
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
-    const users = await User.find({ nickname: { $regex: nickname, $options: 'i' } }); // 대소문자 구분없이 검색
-    res.json(users);
+    // JWT 검증
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId; // 현재 로그인한 사용자 ID
+
+    // 사용자 검색
+    const users = await User.find({ nickname: { $regex: nickname, $options: 'i' } }); // 대소문자 구분 없이 검색
+
+    // 현재 사용자가 팔로우하고 있는 사용자 목록을 가져옴
+    const currentUser = await User.findById(userId);
+    const followingIds = currentUser.following.map(id => id.toString()); // string 형태로 변환
+
+    // 결과에 팔로우 여부 추가
+    const result = users.map(user => {
+      return {
+        _id: user._id,
+        nickname: user.nickname,
+        isFollowing: followingIds.includes(user._id.toString()) // 팔로우 여부
+      };
+    });
+
+    res.status(200).json(result);
   } catch (error) {
+    console.error('사용자 검색 실패:', error);
     res.status(500).send('Error fetching users');
   }
 });
+
 
 // 운동 계획 삭제
 
@@ -301,4 +335,57 @@ app.delete('/api/users/planning/:id', async (req, res) => {
     res.status(500).json({ success: false, message: '운동 계획 삭제 실패' });
   }
 });
+
+// 팔로우 기능
+app.post('/api/users/follow', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const user = await User.findById(decoded.userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      const { nickname } = req.body; // 팔로우할 사용자 닉네임
+
+      // 닉네임으로 사용자 찾기
+      const targetUser = await User.findOne({ nickname });
+      if (!targetUser) {
+        return res.status(404).json({ success: false, message: 'Target user not found' });
+      }
+
+      // 이미 팔로우하고 있는지 확인
+      if (user.following.includes(targetUser._id)) {
+        return res.status(400).json({ success: false, message: 'Already following this user' });
+      }
+
+      // 팔로우 관계 저장
+      user.following.push(targetUser._id);
+      targetUser.followers.push(user._id);
+
+      await user.save();
+      await targetUser.save();
+
+      res.status(200).json({ success: true, message: 'Followed successfully' });
+    });
+  } catch (err) {
+    console.error('팔로우 요청 처리 실패:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+
 
