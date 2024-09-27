@@ -101,12 +101,15 @@ app.get('/api/users/userinfo', async (req, res) => {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
 
-      const user = await User.findById(decoded.userId);
+      const user = await User.findById(decoded.userId)
+        .populate('followers')  // 팔로워 정보 포함
+        .populate('following');  // 팔로잉 정보 포함
+
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
       }
 
-       // Format birthdate to ISO 8601 string if it's not null
+      // Format birthdate to ISO 8601 string if it's not null
       const birthdate = user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null;
 
       res.status(200).json({
@@ -116,6 +119,9 @@ app.get('/api/users/userinfo', async (req, res) => {
         phoneNumber: user.phoneNumber,
         birthdate: birthdate, // formatted birthdate
         name: user.name, 
+        postCount: user.posts ? user.posts.length : 0, // 게시물 수
+        followersCount: user.followers.length, // 팔로워 수
+        followingCount: user.following.length, // 팔로잉 수
       });
     });
   } catch (err) {
@@ -123,6 +129,7 @@ app.get('/api/users/userinfo', async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
 
 
 // 운동 계획 추가
@@ -211,6 +218,7 @@ app.get('/api/users/planinfo', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
 
 
 // 사용자 정보 수정
