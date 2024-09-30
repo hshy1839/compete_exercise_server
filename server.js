@@ -1,30 +1,64 @@
+const http = require('http');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { Server } = require('socket.io');
 const connectDB = require('./db');
 const { User } = require("./models/User.js");
 const { Planning } = require('./models/Planning.js');
+const { Message } = require('./models/message.js');
 const bodyParser = require('body-parser');
 const app = express();
 const cors = require('cors');
-const mongoose = require('mongoose');
-
-
 const JWT_SECRET = 'your-secret-key'; // 비밀 키 (환경 변수로 설정하는 것이 좋습니다)
 
 // MongoDB 연결
 connectDB();
+
+// HTTP 서버 생성
+const server = http.createServer(app);
+const io = new Server(server);
+
+// CORS 설정
 app.use(cors({
-  origin: '*', // CORS 설정 시 도메인과 포트 일치
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
   optionsSuccessStatus: 200,
 }));
+
 app.use(express.json());
 app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.listen(8864, () => {
+// Socket.IO 이벤트 처리
+io.on('connection', (socket) => {
+  console.log('새로운 클라이언트 연결:', socket.id);
+
+  // 새로운 채팅방 생성 이벤트
+  socket.on('createChatRoom', async ({ senderId, receiverId }) => {
+    console.log(`채팅방 생성: ${senderId}와 ${receiverId}`);
+  });
+  
+  // 메시지 수신 이벤트
+  socket.on('sendMessage', async ({ senderId, receiverId, message }) => {
+    const newMessage = new Message({ senderId, receiverId, message });
+    await newMessage.save();
+
+    // 모든 클라이언트에 메시지 전송
+    io.emit('receiveMessage', newMessage);
+  });
+
+  // 클라이언트 연결 해제 이벤트
+  socket.on('disconnect', () => {
+    console.log('클라이언트 연결 해제:', socket.id);
+  });
+});
+
+// 서버 시작
+server.listen(8864, () => {
   console.log('listening to http://localhost:8864');
 });
+
 
 // 로그인
 app.post("/api/users/login", async (req, res) => {
@@ -36,7 +70,7 @@ app.post("/api/users/login", async (req, res) => {
         message: "Username을 다시 확인하세요.",
       });
     }
-    
+
     const isMatch = await user.comparePassword(req.body.password);
     if (!isMatch) {
       return res.json({
@@ -44,7 +78,7 @@ app.post("/api/users/login", async (req, res) => {
         message: "비밀번호가 틀렸습니다",
       });
     }
-    
+
     const token = jwt.sign(
       { userId: user._id, username: user.username, phoneNumber: user.phoneNumber },
       JWT_SECRET,
@@ -114,11 +148,11 @@ app.get('/api/users/userinfo', async (req, res) => {
 
       res.status(200).json({
         success: true,
-        username: user.username, 
+        username: user.username,
         nickname: user.nickname,
         phoneNumber: user.phoneNumber,
         birthdate: birthdate, // formatted birthdate
-        name: user.name, 
+        name: user.name,
         postCount: user.posts ? user.posts.length : 0, // 게시물 수
         followersCount: user.followers.length, // 팔로워 수
         followingCount: user.following.length, // 팔로잉 수
@@ -197,6 +231,7 @@ app.get('/api/users/planinfo', async (req, res) => {
           const user = await User.findById(plan.userId).select('nickname'); // 'nickname'을 정확히 선택합니다.
           return {
             _id: plan._id,
+            userId: plan.userId,
             nickname: user ? user.nickname : 'Unknown User', // 'nickname'으로 변경
             selected_date: plan.selected_date,
             selected_startTime: plan.selected_startTime,
@@ -273,7 +308,7 @@ app.put('/api/users/userinfo', async (req, res) => {
 // 닉네임 검색 라우트
 app.get('/api/users/search', async (req, res) => {
   const nickname = req.query.nickname;
-  
+
   // 사용자 인증 토큰 처리
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -315,7 +350,6 @@ app.get('/api/users/search', async (req, res) => {
 
 
 // 운동 계획 삭제
-
 app.delete('/api/users/planning/:id', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -395,5 +429,55 @@ app.post('/api/users/follow', async (req, res) => {
   }
 });
 
+// 팔로우 취소
+app.post('/api/users/deletefollow', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
 
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const user = await User.findById(decoded.userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      const { nickname } = req.body; // 팔로우 취소할 사용자 닉네임
+
+      // 닉네임으로 사용자 찾기
+      const targetUser = await User.findOne({ nickname });
+      if (!targetUser) {
+        return res.status(404).json({ success: false, message: 'Target user not found' });
+      }
+
+      // 팔로우 여부 확인
+      if (!user.following.includes(targetUser._id)) {
+        return res.status(400).json({ success: false, message: 'You are not following this user' });
+      }
+
+      // 팔로우 취소 처리 (각각의 팔로잉 및 팔로워 목록에서 제거)
+      user.following = user.following.filter(followId => followId.toString() !== targetUser._id.toString());
+      targetUser.followers = targetUser.followers.filter(followerId => followerId.toString() !== user._id.toString());
+
+      // 변경 사항 저장
+      await user.save();
+      await targetUser.save();
+
+      res.status(200).json({ success: true, message: 'Unfollowed successfully' });
+    });
+  } catch (err) {
+    console.error('팔로우 취소 요청 처리 실패:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
