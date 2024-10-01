@@ -99,23 +99,33 @@ socket.on('joinChatRoom', async ({ chatRoomId, senderId }) => {
   }
 });
 
-  // 메시지 수신 이벤트
-  socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
-    try {
-      const newMessage = new Message({
-        senderId,
-        receiverId,
-        message,
-        chatRoomId,
-      });
-      await newMessage.save();
+// 메시지 수신 이벤트
+socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
+  try {
+    const newMessage = new Message({
+      senderId,
+      receiverId,
+      message,
+      chatRoomId,
+      timestamp: new Date().toISOString(), // 타임스탬프를 ISO 문자열로 변환
+    });
+    await newMessage.save();
 
-      // 특정 채팅방에 메시지 전송
-      io.to(chatRoomId).emit('receiveMessage', newMessage);
-    } catch (err) {
-      console.error('메시지 전송 중 오류:', err);
-    }
-  });
+    // 특정 채팅방에 메시지 전송
+    const formattedMessage = {
+      _id: newMessage._id,
+      senderId: newMessage.senderId.toString(),
+      message: newMessage.message,
+      chatRoomId: newMessage.chatRoomId,
+      timestamp: newMessage.timestamp, // 타임스탬프 포함
+    };
+
+    io.to(chatRoomId).emit('receiveMessage', formattedMessage);
+  } catch (err) {
+    console.error('메시지 전송 중 오류:', err);
+  }
+});
+
 
   // 클라이언트 연결 해제 이벤트
   socket.on('disconnect', () => {
