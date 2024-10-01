@@ -41,7 +41,6 @@ io.on('connection', (socket) => {
       let chatRoom = await ChatRoom.findOne({
         participants: { $all: [senderId, receiverId] },
       });
-
       // 채팅방이 없으면 생성
       if (!chatRoom) {
         chatRoom = new ChatRoom({
@@ -74,18 +73,26 @@ io.on('connection', (socket) => {
     }
   });
 
-// 채팅방 참여 이벤트 처리
-socket.on('joinChatRoom', async ({ chatRoomId, senderId }) => { // chatRoomId를 매개변수로 추가
+// 기존 메시지 처리
+socket.on('joinChatRoom', async ({ chatRoomId, senderId }) => {
   try {
     // 채팅방에 참여
     socket.join(chatRoomId);
     console.log(`클라이언트 ${senderId}가 채팅방 ${chatRoomId}에 참여했습니다.`);
 
     // 기존 메시지 가져오기
-    const messages = await Message.find({ chatRoomId }).populate('senderId', 'username'); // senderId에 따라 사용자 정보를 가져옵니다.
+    const messages = await Message.find({ chatRoomId })
+      .populate('senderId', 'username');
 
     // 클라이언트에게 기존 메시지 전송
-    socket.emit('existingMessages', messages);
+    const formattedMessages = messages.map(message => ({
+      _id: message._id,
+      senderId: message.senderId._id.toString(), // ObjectId를 문자열로 변환
+      message: message.message,
+      chatRoomId: message.chatRoomId,
+    }));
+
+    socket.emit('existingMessages', formattedMessages);
   } catch (err) {
     console.error('채팅방 참여 중 오류:', err);
     socket.emit('error', '채팅방에 참여할 수 없습니다.');
