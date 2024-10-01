@@ -29,6 +29,12 @@ const planningSchema = mongoose.Schema({
   selected_location: {
     type: String,
     required: true
+  },
+  participants: { // 새로운 필드 추가
+    type: [mongoose.Schema.Types.ObjectId], // ObjectId 배열로 설정
+    ref: 'User', // User 모델 참조
+    default: [], // 기본값으로 빈 배열 설정,
+    unique: true,
   }
 });
 

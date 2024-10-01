@@ -334,6 +334,45 @@ app.get('/api/users/planinfo', async (req, res) => {
 });
 
 
+app.post('/api/users/participate/:planId', async (req, res) => {
+  console.log('요청 수신됨:', req.params, req.body); // 요청 로그 추가
+  const planId = req.params.planId;
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const decoded = jwt.verify(token, JWT_SECRET);
+  const userId = decoded.userId; // 현재 로그인한 사용자의 ID를 가져옴
+
+  try {
+    const plan = await Planning.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ message: '운동 계획을 찾을 수 없습니다.' });
+    }
+
+    // 사용자가 자신의 계획에 참여할 수 없도록 검사
+    if (plan.userId.toString() === userId) {
+      return res.status(403).json({ message: '본인의 계획에는 참여할 수 없습니다.' });
+    }
+
+    if (plan.participants.includes(userId)) {
+      return res.status(400).json({ message: '이미 참여하고 있는 계획입니다.' });
+    }
+
+    plan.participants.push(userId);
+    plan.selected_participants += 1;
+    await plan.save();
+
+    res.status(200).json({ message: '참여 요청이 성공적으로 처리되었습니다.' });
+  } catch (error) {
+    console.error('운동 계획 참여 중 오류 발생:', error);
+    res.status(500).json({ message: '서버 오류' });
+  }
+});
+
 
 // 사용자 정보 수정
 app.put('/api/users/userinfo', async (req, res) => {
@@ -559,4 +598,3 @@ app.post('/api/users/deletefollow', async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
-
