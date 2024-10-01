@@ -318,6 +318,7 @@ app.get('/api/users/planinfo', async (req, res) => {
             selected_participants: plan.selected_participants,
             selected_exercise: plan.selected_exercise,
             selected_location: plan.selected_location,
+            participants: plan.participants,
           };
         }));
 
@@ -333,7 +334,7 @@ app.get('/api/users/planinfo', async (req, res) => {
   }
 });
 
-
+// 운동 계획 참여
 app.post('/api/users/participate/:planId', async (req, res) => {
   console.log('요청 수신됨:', req.params, req.body); // 요청 로그 추가
   const planId = req.params.planId;
@@ -363,7 +364,6 @@ app.post('/api/users/participate/:planId', async (req, res) => {
     }
 
     plan.participants.push(userId);
-    plan.selected_participants += 1;
     await plan.save();
 
     res.status(200).json({ message: '참여 요청이 성공적으로 처리되었습니다.' });
