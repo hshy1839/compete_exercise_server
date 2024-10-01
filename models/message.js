@@ -1,4 +1,3 @@
-// message.js
 const mongoose = require('mongoose');
 
 // 메시지 스키마 정의
@@ -20,6 +19,11 @@ const messageSchema = new mongoose.Schema({
   timestamp: {
     type: Date, // 메시지 전송 시간
     default: Date.now // 기본값으로 현재 시간
+  },
+  chatRoomId: {
+    type: mongoose.Schema.Types.ObjectId, // 채팅방의 고유 ID
+    required: true,
+    ref: 'ChatRoom' // 채팅방 모델을 참조
   }
 });
 

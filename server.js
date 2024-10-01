@@ -5,8 +5,8 @@ const { Server } = require('socket.io');
 const connectDB = require('./db');
 const { User } = require("./models/User.js");
 const { Planning } = require('./models/Planning.js');
-const  Message  = require('./models/message.js');
-const ChatRoom  = require('./models/ChatRoom.js');
+const Message = require('./models/message.js');
+const ChatRoom = require('./models/ChatRoom.js');
 const bodyParser = require('body-parser');
 const app = express();
 const cors = require('cors');
@@ -59,12 +59,32 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 채팅방 나가기 이벤트 처리
+  socket.on('leaveChatRoom', ({ chatRoomId }) => {
+    try {
+      // 클라이언트가 채팅방을 나가게 처리
+      socket.leave(chatRoomId);
+      console.log(`클라이언트 ${socket.id}가 채팅방 ${chatRoomId}에서 나갔습니다.`);
+
+      // 클라이언트에게 채팅방 나감 확인
+      socket.emit('chatRoomLeft', { chatRoomId });
+    } catch (err) {
+      console.error('채팅방 나가는 중 오류:', err);
+      socket.emit('error', '채팅방을 나갈 수 없습니다.');
+    }
+  });
+
   // 메시지 수신 이벤트
   socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
     try {
-      const newMessage = new Message({ senderId, receiverId, message });
+      const newMessage = new Message({
+        senderId,
+        receiverId,
+        message,
+        chatRoomId,
+      });
       await newMessage.save();
-  
+
       // 특정 채팅방에 메시지 전송
       io.to(chatRoomId).emit('receiveMessage', newMessage);
     } catch (err) {
