@@ -5,7 +5,8 @@ const { Server } = require('socket.io');
 const connectDB = require('./db');
 const { User } = require("./models/User.js");
 const { Planning } = require('./models/Planning.js');
-const { Message } = require('./models/message.js');
+const  Message  = require('./models/message.js');
+const ChatRoom  = require('./models/ChatRoom.js');
 const bodyParser = require('body-parser');
 const app = express();
 const cors = require('cors');
@@ -30,22 +31,45 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Socket.IO 이벤트 처리
 io.on('connection', (socket) => {
   console.log('새로운 클라이언트 연결:', socket.id);
 
-  // 새로운 채팅방 생성 이벤트
+  // 새로운 채팅방 생성 이벤트 처리
   socket.on('createChatRoom', async ({ senderId, receiverId }) => {
-    console.log(`채팅방 생성: ${senderId}와 ${receiverId}`);
-  });
-  
-  // 메시지 수신 이벤트
-  socket.on('sendMessage', async ({ senderId, receiverId, message }) => {
-    const newMessage = new Message({ senderId, receiverId, message });
-    await newMessage.save();
+    try {
+      // 참가자들이 이미 있는 채팅방이 존재하는지 확인
+      let chatRoom = await ChatRoom.findOne({
+        participants: { $all: [senderId, receiverId] },
+      });
 
-    // 모든 클라이언트에 메시지 전송
-    io.emit('receiveMessage', newMessage);
+      // 채팅방이 없으면 생성
+      if (!chatRoom) {
+        chatRoom = new ChatRoom({
+          participants: [senderId, receiverId],
+        });
+        await chatRoom.save();
+      }
+
+      // 클라이언트에게 채팅방 ID 전달
+      socket.emit('chatRoomCreated', { chatRoomId: chatRoom._id });
+      console.log(`채팅방 생성됨: ${chatRoom._id}`);
+    } catch (err) {
+      console.error('채팅방 생성 중 오류:', err);
+      socket.emit('error', '채팅방을 생성할 수 없습니다.');
+    }
+  });
+
+  // 메시지 수신 이벤트
+  socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
+    try {
+      const newMessage = new Message({ senderId, receiverId, message });
+      await newMessage.save();
+  
+      // 특정 채팅방에 메시지 전송
+      io.to(chatRoomId).emit('receiveMessage', newMessage);
+    } catch (err) {
+      console.error('메시지 전송 중 오류:', err);
+    }
   });
 
   // 클라이언트 연결 해제 이벤트
