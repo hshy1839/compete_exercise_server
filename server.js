@@ -74,6 +74,24 @@ io.on('connection', (socket) => {
     }
   });
 
+// 채팅방 참여 이벤트 처리
+socket.on('joinChatRoom', async ({ chatRoomId, senderId }) => { // chatRoomId를 매개변수로 추가
+  try {
+    // 채팅방에 참여
+    socket.join(chatRoomId);
+    console.log(`클라이언트 ${senderId}가 채팅방 ${chatRoomId}에 참여했습니다.`);
+
+    // 기존 메시지 가져오기
+    const messages = await Message.find({ chatRoomId }).populate('senderId', 'username'); // senderId에 따라 사용자 정보를 가져옵니다.
+
+    // 클라이언트에게 기존 메시지 전송
+    socket.emit('existingMessages', messages);
+  } catch (err) {
+    console.error('채팅방 참여 중 오류:', err);
+    socket.emit('error', '채팅방에 참여할 수 없습니다.');
+  }
+});
+
   // 메시지 수신 이벤트
   socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
     try {
