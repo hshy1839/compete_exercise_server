@@ -226,6 +226,7 @@ app.get('/api/users/userinfo', async (req, res) => {
       const birthdate = user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null;
 
       res.status(200).json({
+        _id: user._id,
         success: true,
         username: user.username,
         nickname: user.nickname,
