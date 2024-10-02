@@ -126,6 +126,58 @@ socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) =
   }
 });
 
+ // 운동 계획 조회
+ socket.on('getExercisePlans', async (token) => {
+  try {
+    if (!token) {
+      socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      try {
+        // 모든 사용자의 운동 계획 조회
+        const plans = await Planning.find({});
+        if (!plans || plans.length === 0) {
+          socket.emit('exercisePlansResponse', { success: false, message: 'No planning found' });
+          return;
+        }
+
+        // 계획이 여러 개일 수 있으므로 배열로 응답
+        const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
+          const user = await User.findById(plan.userId).select('nickname');
+          return {
+            _id: plan._id,
+            userId: plan.userId,
+            nickname: user ? user.nickname : 'Unknown User',
+            selected_date: plan.selected_date,
+            selected_startTime: plan.selected_startTime,
+            selected_endTime: plan.selected_endTime,
+            selected_participants: plan.selected_participants,
+            selected_exercise: plan.selected_exercise,
+            selected_location: plan.selected_location,
+            participants: plan.participants,
+          };
+        }));
+
+        // 클라이언트에 응답
+        socket.emit('exercisePlansResponse', { success: true, plans: plansWithUserDetails });
+      } catch (fetchError) {
+        console.error('계획 정보 조회 실패:', fetchError);
+        socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
+      }
+    });
+  } catch (err) {
+    console.error('계획 정보 조회 실패:', err);
+    socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
+  }
+});
+
 
   // 클라이언트 연결 해제 이벤트
   socket.on('disconnect', () => {
@@ -281,59 +333,7 @@ app.post('/api/users/planning', async (req, res) => {
 });
 
 
-// 운동 계획 조회
-app.get('/api/users/planinfo', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
 
-    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-
-    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-      }
-
-      try {
-        // 모든 사용자의 운동 계획 조회
-        const plans = await Planning.find({});
-        if (!plans || plans.length === 0) {
-          return res.status(404).json({ success: false, message: 'No planning found' });
-        }
-
-        // 계획이 여러 개일 수 있으므로 배열로 응답
-        const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
-          const user = await User.findById(plan.userId).select('nickname'); // 'nickname'을 정확히 선택합니다.
-          return {
-            _id: plan._id,
-            userId: plan.userId,
-            nickname: user ? user.nickname : 'Unknown User', // 'nickname'으로 변경
-            selected_date: plan.selected_date,
-            selected_startTime: plan.selected_startTime,
-            selected_endTime: plan.selected_endTime,
-            selected_participants: plan.selected_participants,
-            selected_exercise: plan.selected_exercise,
-            selected_location: plan.selected_location,
-            participants: plan.participants,
-          };
-        }));
-
-        return res.status(200).json({ success: true, plans: plansWithUserDetails });
-      } catch (fetchError) {
-        console.error('계획 정보 조회 실패:', fetchError);
-        return res.status(500).json({ success: false, message: 'Internal server error' });
-      }
-    });
-  } catch (err) {
-    console.error('계획 정보 조회 실패:', err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
 
 // 운동 계획 참여
 app.post('/api/users/participate/:planId', async (req, res) => {
