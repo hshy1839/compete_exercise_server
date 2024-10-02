@@ -73,112 +73,150 @@ io.on('connection', (socket) => {
     }
   });
 
-// 기존 메시지 처리
-socket.on('joinChatRoom', async ({ chatRoomId, senderId }) => {
-  try {
-    // 채팅방에 참여
-    socket.join(chatRoomId);
-    console.log(`클라이언트 ${senderId}가 채팅방 ${chatRoomId}에 참여했습니다.`);
+  // 기존 메시지 처리
+  socket.on('joinChatRoom', async ({ chatRoomId, senderId }) => {
+    try {
+      // 채팅방에 참여
+      socket.join(chatRoomId);
+      console.log(`클라이언트 ${senderId}가 채팅방 ${chatRoomId}에 참여했습니다.`);
 
-    // 기존 메시지 가져오기
-    const messages = await Message.find({ chatRoomId })
-      .populate('senderId', 'username');
+      // 기존 메시지 가져오기
+      const messages = await Message.find({ chatRoomId })
+        .populate('senderId', 'username');
 
-    // 클라이언트에게 기존 메시지 전송
-    const formattedMessages = messages.map(message => ({
-      _id: message._id,
-      senderId: message.senderId._id.toString(), // ObjectId를 문자열로 변환
-      message: message.message,
-      chatRoomId: message.chatRoomId,
-    }));
+      // 클라이언트에게 기존 메시지 전송
+      const formattedMessages = messages.map(message => ({
+        _id: message._id,
+        senderId: message.senderId._id.toString(), // ObjectId를 문자열로 변환
+        message: message.message,
+        chatRoomId: message.chatRoomId,
+      }));
 
-    socket.emit('existingMessages', formattedMessages);
-  } catch (err) {
-    console.error('채팅방 참여 중 오류:', err);
-    socket.emit('error', '채팅방에 참여할 수 없습니다.');
-  }
-});
-
-// 메시지 수신 이벤트
-socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
-  try {
-    const newMessage = new Message({
-      senderId,
-      receiverId,
-      message,
-      chatRoomId,
-      timestamp: new Date().toISOString(), // 타임스탬프를 ISO 문자열로 변환
-    });
-    await newMessage.save();
-
-    // 특정 채팅방에 메시지 전송
-    const formattedMessage = {
-      _id: newMessage._id,
-      senderId: newMessage.senderId.toString(),
-      message: newMessage.message,
-      chatRoomId: newMessage.chatRoomId,
-      timestamp: newMessage.timestamp, // 타임스탬프 포함
-    };
-
-    io.to(chatRoomId).emit('receiveMessage', formattedMessage);
-  } catch (err) {
-    console.error('메시지 전송 중 오류:', err);
-  }
-});
-
- // 운동 계획 조회
- socket.on('getExercisePlans', async (token) => {
-  try {
-    if (!token) {
-      socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
-      return;
+      socket.emit('existingMessages', formattedMessages);
+    } catch (err) {
+      console.error('채팅방 참여 중 오류:', err);
+      socket.emit('error', '채팅방에 참여할 수 없습니다.');
     }
+  });
 
-    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
-      if (err) {
+  // 메시지 수신 이벤트
+  socket.on('sendMessage', async ({ chatRoomId, senderId, receiverId, message }) => {
+    try {
+      const newMessage = new Message({
+        senderId,
+        receiverId,
+        message,
+        chatRoomId,
+        timestamp: new Date().toISOString(), // 타임스탬프를 ISO 문자열로 변환
+      });
+      await newMessage.save();
+
+      // 특정 채팅방에 메시지 전송
+      const formattedMessage = {
+        _id: newMessage._id,
+        senderId: newMessage.senderId.toString(),
+        message: newMessage.message,
+        chatRoomId: newMessage.chatRoomId,
+        timestamp: newMessage.timestamp, // 타임스탬프 포함
+      };
+
+      io.to(chatRoomId).emit('receiveMessage', formattedMessage);
+    } catch (err) {
+      console.error('메시지 전송 중 오류:', err);
+    }
+  });
+
+  // 운동 계획 조회
+  socket.on('getExercisePlans', async (token) => {
+    try {
+      if (!token) {
         socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
         return;
       }
 
-      try {
-        // 모든 사용자의 운동 계획 조회
-        const plans = await Planning.find({});
-        if (!plans || plans.length === 0) {
-          socket.emit('exercisePlansResponse', { success: false, message: 'No planning found' });
+      jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+        if (err) {
+          socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
           return;
         }
 
-        // 계획이 여러 개일 수 있으므로 배열로 응답
-        const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
-          const user = await User.findById(plan.userId).select('nickname');
-          return {
-            _id: plan._id,
-            userId: plan.userId,
-            nickname: user ? user.nickname : 'Unknown User',
-            selected_date: plan.selected_date,
-            selected_startTime: plan.selected_startTime,
-            selected_endTime: plan.selected_endTime,
-            selected_participants: plan.selected_participants,
-            selected_exercise: plan.selected_exercise,
-            selected_location: plan.selected_location,
-            participants: plan.participants,
-          };
-        }));
+        try {
+          // 모든 사용자의 운동 계획 조회
+          const plans = await Planning.find({});
+          if (!plans || plans.length === 0) {
+            socket.emit('exercisePlansResponse', { success: false, message: 'No planning found' });
+            return;
+          }
 
-        // 클라이언트에 응답
-        socket.emit('exercisePlansResponse', { success: true, plans: plansWithUserDetails });
-      } catch (fetchError) {
-        console.error('계획 정보 조회 실패:', fetchError);
-        socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
+          // 계획이 여러 개일 수 있으므로 배열로 응답
+          const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
+            const user = await User.findById(plan.userId).select('nickname');
+            return {
+              _id: plan._id,
+              userId: plan.userId,
+              nickname: user ? user.nickname : 'Unknown User',
+              selected_date: plan.selected_date,
+              selected_startTime: plan.selected_startTime,
+              selected_endTime: plan.selected_endTime,
+              selected_participants: plan.selected_participants,
+              selected_exercise: plan.selected_exercise,
+              selected_location: plan.selected_location,
+              participants: plan.participants,
+            };
+          }));
+
+          // 클라이언트에 응답
+          socket.emit('exercisePlansResponse', { success: true, plans: plansWithUserDetails });
+        } catch (fetchError) {
+          console.error('계획 정보 조회 실패:', fetchError);
+          socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
+        }
+      });
+    } catch (err) {
+      console.error('계획 정보 조회 실패:', err);
+      socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
+    }
+  });
+
+  // 운동 계획 참여 
+  socket.on('participateInPlan', async ({ planId, userId }) => {
+    console.log('참여 요청 수신됨:', { planId, userId });
+
+    try {
+      const plan = await Planning.findById(planId);
+      if (!plan) {
+        socket.emit('participateResponse', { success: false, message: '운동 계획을 찾을 수 없습니다.' });
+        return;
       }
-    });
-  } catch (err) {
-    console.error('계획 정보 조회 실패:', err);
-    socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
-  }
-});
 
+      // 사용자가 자신의 계획에 참여할 수 없도록 검사
+      if (plan.userId.toString() === userId) {
+        socket.emit('participateResponse', { success: false, message: '본인의 계획에는 참여할 수 없습니다.' });
+        return;
+      }
 
+      if (plan.participants.includes(userId)) {
+        socket.emit('participateResponse', { success: false, message: '이미 참여하고 있는 계획입니다.' });
+        return;
+      }
+
+      plan.participants.push(userId);
+      await plan.save();
+
+      // 참여 성공 후 모든 클라이언트에 운동 계획 목록 전송
+      const updatedPlans = await Planning.find({});
+      const plansData = updatedPlans.map(plan => ({
+        participants: plan.participants,
+      }));
+
+      // 모든 클라이언트에 업데이트된 계획 전송
+      io.emit('exercisePlansResponse', { success: true, plans: plansData });
+      socket.emit('participateResponse', { success: true, message: '참여 요청이 성공적으로 처리되었습니다.' });
+    } catch (error) {
+      console.error('운동 계획 참여 중 오류 발생:', error);
+      socket.emit('participateResponse', { success: false, message: '서버 오류' });
+    }
+  });
   // 클라이언트 연결 해제 이벤트
   socket.on('disconnect', () => {
     console.log('클라이언트 연결 해제:', socket.id);
@@ -329,48 +367,6 @@ app.post('/api/users/planning', async (req, res) => {
   } catch (err) {
     console.error('운동 계획 저장 실패:', err);
     res.status(500).json({ success: false, message: '운동 계획 저장 실패' });
-  }
-});
-
-
-
-
-// 운동 계획 참여
-app.post('/api/users/participate/:planId', async (req, res) => {
-  console.log('요청 수신됨:', req.params, req.body); // 요청 로그 추가
-  const planId = req.params.planId;
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-
-  const token = authHeader.split(' ')[1];
-  const decoded = jwt.verify(token, JWT_SECRET);
-  const userId = decoded.userId; // 현재 로그인한 사용자의 ID를 가져옴
-
-  try {
-    const plan = await Planning.findById(planId);
-    if (!plan) {
-      return res.status(404).json({ message: '운동 계획을 찾을 수 없습니다.' });
-    }
-
-    // 사용자가 자신의 계획에 참여할 수 없도록 검사
-    if (plan.userId.toString() === userId) {
-      return res.status(403).json({ message: '본인의 계획에는 참여할 수 없습니다.' });
-    }
-
-    if (plan.participants.includes(userId)) {
-      return res.status(400).json({ message: '이미 참여하고 있는 계획입니다.' });
-    }
-
-    plan.participants.push(userId);
-    await plan.save();
-
-    res.status(200).json({ message: '참여 요청이 성공적으로 처리되었습니다.' });
-  } catch (error) {
-    console.error('운동 계획 참여 중 오류 발생:', error);
-    res.status(500).json({ message: '서버 오류' });
   }
 });
 
