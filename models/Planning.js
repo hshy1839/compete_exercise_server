@@ -35,7 +35,12 @@ const planningSchema = mongoose.Schema({
     ref: 'User', // User 모델 참조
     default: [], // 기본값으로 빈 배열 설정,
     unique: true,
-  }
+  },
+  isPrivate: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
 });
 
 const Planning = mongoose.model("Planning", planningSchema);

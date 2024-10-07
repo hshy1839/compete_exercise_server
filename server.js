@@ -369,7 +369,7 @@ app.get('/api/users/userinfo', async (req, res) => {
 // 운동 계획 추가
 app.post('/api/users/planning', async (req, res) => {
   try {
-    const { selected_date, selected_exercise, selected_participants, selected_startTime, selected_endTime, selected_location } = req.body;
+    const { selected_date, selected_exercise, selected_participants, selected_startTime, selected_endTime, selected_location, isPrivate, participants } = req.body;
 
     // Authorization 헤더에서 토큰 추출
     const authHeader = req.headers.authorization;
@@ -389,7 +389,9 @@ app.post('/api/users/planning', async (req, res) => {
       selected_participants,
       selected_startTime,
       selected_endTime,
-      selected_location
+      selected_location,
+      isPrivate,
+      participants,
     });
 
     await planning.save();
