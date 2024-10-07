@@ -126,57 +126,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 운동 계획 조회
-  socket.on('getExercisePlans', async (token) => {
-    try {
-      if (!token) {
-        socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
-        return;
-      }
-
-      jwt.verify(token, JWT_SECRET, async (err, decoded) => {
-        if (err) {
-          socket.emit('exercisePlansResponse', { success: false, message: 'Unauthorized' });
-          return;
-        }
-
-        try {
-          // 모든 사용자의 운동 계획 조회
-          const plans = await Planning.find({});
-          if (!plans || plans.length === 0) {
-            socket.emit('exercisePlansResponse', { success: false, message: 'No planning found' });
-            return;
-          }
-
-          // 계획이 여러 개일 수 있으므로 배열로 응답
-          const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
-            const user = await User.findById(plan.userId).select('nickname');
-            return {
-              _id: plan._id,
-              userId: plan.userId,
-              nickname: user ? user.nickname : 'Unknown User',
-              selected_date: plan.selected_date,
-              selected_startTime: plan.selected_startTime,
-              selected_endTime: plan.selected_endTime,
-              selected_participants: plan.selected_participants,
-              selected_exercise: plan.selected_exercise,
-              selected_location: plan.selected_location,
-              participants: plan.participants,
-            };
-          }));
-
-          // 클라이언트에 응답
-          socket.emit('exercisePlansResponse', { success: true, plans: plansWithUserDetails });
-        } catch (fetchError) {
-          console.error('계획 정보 조회 실패:', fetchError);
-          socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
-        }
-      });
-    } catch (err) {
-      console.error('계획 정보 조회 실패:', err);
-      socket.emit('exercisePlansResponse', { success: false, message: 'Internal server error' });
-    }
-  });
 
   // 운동 계획 참여 
   socket.on('participateInPlan', async ({ planId, userId }) => {
@@ -215,6 +164,31 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('운동 계획 참여 중 오류 발생:', error);
       socket.emit('participateResponse', { success: false, message: '서버 오류' });
+    }
+  });
+
+  //운동 계획 해제
+  socket.on('leave_plan', async ({ userId, planId }) => {
+    try {
+      // 계획에서 참여자 목록에서 사용자 ID 제거
+      await Planning.findByIdAndUpdate(planId, {
+        $pull: { participants: userId },
+      });
+
+      // 사용자에게 해당 계획에 대한 정보 업데이트
+      const updatedPlan = await Planning.findById(planId);
+      io.emit('plan_updated', updatedPlan);
+
+      // 클라이언트에 성공 메시지 전송
+      socket.emit('leave_plan_success', {
+        message: '참여 해제 성공',
+        planId: planId,
+      });
+    } catch (error) {
+      console.error('Error leaving plan:', error);
+      socket.emit('leave_plan_error', {
+        message: '참여 해제 실패',
+      });
     }
   });
   // 클라이언트 연결 해제 이벤트
@@ -285,6 +259,82 @@ app.post('/api/users/signup', async (req, res) => {
     return res.status(500).json({ success: false, err });
   }
 });
+
+// 운동 계획 조회
+app.get('/api/users/planinfo', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+      try {
+        // 모든 사용자의 운동 계획 조회
+        const plans = await Planning.find({});
+        if (!plans || plans.length === 0) {
+          return res.status(404).json({ success: false, message: 'No planning found' });
+        }
+
+        // 계획이 여러 개일 수 있으므로 배열로 응답
+        const plansWithUserDetails = await Promise.all(plans.map(async (plan) => {
+          const user = await User.findById(plan.userId).select('nickname'); // 'nickname'을 정확히 선택합니다.
+          return {
+            _id: plan._id,
+            userId: plan.userId,
+            nickname: user ? user.nickname : 'Unknown User', // 'nickname'으로 변경
+            selected_date: plan.selected_date,
+            selected_startTime: plan.selected_startTime,
+            selected_endTime: plan.selected_endTime,
+            selected_participants: plan.selected_participants,
+            selected_exercise: plan.selected_exercise,
+            selected_location: plan.selected_location,
+            participants: plan.participants,
+           
+          };
+        }));
+        return res.status(200).json({ success: true, plans: plansWithUserDetails });
+      } catch (fetchError) {
+        console.error('계획 정보 조회 실패:', fetchError);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+      }
+    });
+  } catch (err) {
+    console.error('계획 정보 조회 실패:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// 참여해제 API
+app.post('/api/plans/cancel-participation/:planId', async (req, res) => {
+  const { planId } = req.params;
+  const { userId } = req.body;
+
+  try {
+    const plan = await Plan.findById(planId);
+
+    if (!plan) {
+      return res.status(404).json({ message: '운동 계획을 찾을 수 없습니다.' });
+    }
+
+    // 참여자 목록에서 해당 유저를 제거
+    plan.participants = plan.participants.filter(id => id.toString() !== userId);
+
+    await plan.save();
+
+    res.status(200).json({ message: '참여해제가 완료되었습니다.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: '참여해제 중 오류가 발생했습니다.' });
+  }
+});
+
 
 // 사용자 정보 조회
 app.get('/api/users/userinfo', async (req, res) => {
