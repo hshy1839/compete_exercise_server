@@ -36,8 +36,18 @@ const userSchema = mongoose.Schema({
         type: Date,
         default: null
     },
-    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // 팔로워 목록
-    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // 팔로잉 목록
+    followers: { // 새로운 필드 추가
+        type: [mongoose.Schema.Types.ObjectId], // ObjectId 배열로 설정
+        ref: 'User', // User 모델 참조
+        default: [], // 기본값으로 빈 배열 설정,
+        unique: true,
+      }, // 팔로워 목록
+    following: { // 새로운 필드 추가
+        type: [mongoose.Schema.Types.ObjectId], // ObjectId 배열로 설정
+        ref: 'User', // User 모델 참조
+        default: [], // 기본값으로 빈 배열 설정,
+        unique: true,
+      } // 팔로잉 목록
 });
 
 

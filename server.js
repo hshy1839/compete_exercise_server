@@ -331,9 +331,8 @@ app.get('/api/users/userinfo', async (req, res) => {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
 
-      const user = await User.findById(decoded.userId)
-        .populate('followers')  // 팔로워 정보 포함
-        .populate('following');  // 팔로잉 정보 포함
+      const user = await User.findById(decoded.userId);
+        
 
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
@@ -341,6 +340,8 @@ app.get('/api/users/userinfo', async (req, res) => {
 
       // Format birthdate to ISO 8601 string if it's not null
       const birthdate = user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null;
+
+      const followerIds = user.followers.map(follower => follower._id);
 
       res.status(200).json({
         _id: user._id,
@@ -353,6 +354,8 @@ app.get('/api/users/userinfo', async (req, res) => {
         postCount: user.posts ? user.posts.length : 0, // 게시물 수
         followersCount: user.followers.length, // 팔로워 수
         followingCount: user.following.length, // 팔로잉 수
+        followers: user.followers,
+        following: user.following,
       });
     });
   } catch (err) {
@@ -490,6 +493,35 @@ app.get('/api/users/search', async (req, res) => {
   }
 });
 
+// 운동 계획 세부정보 조회
+app.get('/api/users/planinfo/:planId', async (req, res) => {
+  const { planId } = req.params; // URL 파라미터에서 planId 가져오기
+  
+  try {
+    const planDetails = await Planning.findById(planId); // planId로 운동 계획 찾기
+    const user = await User.findById(planDetails.userId).select('nickname');
+    if (!planDetails) {
+      return res.status(404).json({ message: '운동 계획을 찾을 수 없습니다.' });
+    }
+
+    // 필요한 형식으로 응답 데이터 준비
+    const response = {
+      nickname: user ? user.nickname : 'Unknown User',
+      selected_exercise: planDetails.selected_exercise,
+      selected_date: planDetails.selected_date,
+      selected_startTime: planDetails.selected_startTime,
+      selected_endTime: planDetails.selected_endTime,
+      selected_location: planDetails.selected_location,
+      participants: planDetails.participants, // 참여 인원 배열
+      selected_participants: planDetails.selected_participants,
+    };
+
+    return res.status(200).json(response); // 성공적으로 응답 반환
+  } catch (error) {
+    console.error('운동 계획 정보 가져오는 중 오류 발생:', error);
+    return res.status(500).json({ message: '서버 오류' });
+  }
+});
 
 // 운동 계획 삭제
 app.delete('/api/users/planning/:id', async (req, res) => {
