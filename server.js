@@ -311,29 +311,6 @@ app.get('/api/users/planinfo', async (req, res) => {
   }
 });
 
-// 참여해제 API
-app.post('/api/plans/cancel-participation/:planId', async (req, res) => {
-  const { planId } = req.params;
-  const { userId } = req.body;
-
-  try {
-    const plan = await Plan.findById(planId);
-
-    if (!plan) {
-      return res.status(404).json({ message: '운동 계획을 찾을 수 없습니다.' });
-    }
-
-    // 참여자 목록에서 해당 유저를 제거
-    plan.participants = plan.participants.filter(id => id.toString() !== userId);
-
-    await plan.save();
-
-    res.status(200).json({ message: '참여해제가 완료되었습니다.' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: '참여해제 중 오류가 발생했습니다.' });
-  }
-});
 
 
 // 사용자 정보 조회
