@@ -296,7 +296,7 @@ app.get('/api/users/planinfo', async (req, res) => {
             selected_exercise: plan.selected_exercise,
             selected_location: plan.selected_location,
             participants: plan.participants,
-           
+            isPrivate: plan.isPrivate,
           };
         }));
         return res.status(200).json({ success: true, plans: plansWithUserDetails });
@@ -448,6 +448,27 @@ app.put('/api/users/userinfo', async (req, res) => {
     });
   } catch (err) {
     console.error('사용자 정보 수정 실패:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// 사용자 아이디로 정보 조회
+app.get('/api/users/userinfo/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const userDetails = await User.findById(userId);
+    if (!userDetails) {
+      return res.status(404).json({ message: '운동 계획을 찾을 수 없습니다.' });
+    }
+
+      res.status(200).json({
+        nickname: userDetails.nickname,
+        phoneNumber: userDetails.phoneNumber,
+        birthdate: userDetails.birthdate, // formatted birthdate
+        name: userDetails.name,
+      });
+  } catch (err) {
+    console.error('사용자 정보 조회 실패:', err);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
