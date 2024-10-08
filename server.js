@@ -7,6 +7,7 @@ const { User } = require("./models/User.js");
 const { Planning } = require('./models/Planning.js');
 const Message = require('./models/message.js');
 const ChatRoom = require('./models/ChatRoom.js');
+const Notification = require('./models/Notification.js');
 const bodyParser = require('body-parser');
 const app = express();
 const cors = require('cors');
@@ -31,8 +32,36 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
+
 io.on('connection', (socket) => {
   console.log('새로운 클라이언트 연결:', socket.id);
+
+  //알림 모듈
+  const sendNotification = async (userId, message) => {
+    try {
+      const notification = new Notification({ userId, message });
+      await notification.save();
+      console.log(`알림 전송됨: ${message} to userId: ${userId}, \n notification: ${notification}`);
+    } catch (error) {
+      console.error('알림 전송 중 오류 발생:', error);
+    }
+  };
+  
+  // 클라이언트의 사용자 ID를 받아서 알림을 조회하는 이벤트
+  socket.on('requestNotifications', async (userId) => {
+    try {
+      // 특정 사용자 ID와 일치하는 알림 조회
+      const notifications = await Notification.find({ userId });
+      
+      // 클라이언트에 알림 전송
+      socket.emit('receiveNotifications', notifications);
+      console.log(`사용자 ${userId}의 알림 전송됨: ${notifications.length}개`);
+    } catch (error) {
+      console.error('알림 조회 중 오류 발생:', error);
+    }
+  });
+  
+  
 
   // 새로운 채팅방 생성 이벤트 처리
   socket.on('createChatRoom', async ({ senderId, receiverId }) => {
@@ -152,6 +181,10 @@ io.on('connection', (socket) => {
       plan.participants.push(userId);
       await plan.save();
 
+      //알림 전송
+      await sendNotification(plan.userId, `${userId}님이 당신의 운동 계획에 참여했습니다.`);
+      
+      
       // 참여 성공 후 모든 클라이언트에 운동 계획 목록 전송
       const updatedPlans = await Planning.find({});
       const plansData = updatedPlans.map(plan => ({
@@ -167,30 +200,43 @@ io.on('connection', (socket) => {
     }
   });
 
-  //운동 계획 해제
-  socket.on('leave_plan', async ({ userId, planId }) => {
-    try {
-      // 계획에서 참여자 목록에서 사용자 ID 제거
-      await Planning.findByIdAndUpdate(planId, {
-        $pull: { participants: userId },
-      });
+  // 운동 계획 해제
+socket.on('leave_plan', async ({ userId, planId }) => {
+  try {
+    // 계획에서 참여자 목록에서 사용자 ID 제거
+    await Planning.findByIdAndUpdate(planId, {
+      $pull: { participants: userId },
+    });
 
-      // 사용자에게 해당 계획에 대한 정보 업데이트
-      const updatedPlan = await Planning.findById(planId);
-      io.emit('plan_updated', updatedPlan);
+    // 사용자에게 해당 계획에 대한 정보 업데이트
+    const updatedPlan = await Planning.findById(planId);
+    io.emit('plan_updated', updatedPlan);
 
-      // 클라이언트에 성공 메시지 전송
-      socket.emit('leave_plan_success', {
-        message: '참여 해제 성공',
-        planId: planId,
-      });
-    } catch (error) {
-      console.error('Error leaving plan:', error);
-      socket.emit('leave_plan_error', {
-        message: '참여 해제 실패',
-      });
-    }
-  });
+    // 알림 메시지 생성
+    const notificationMessage = `${userId}님이 계획에서 참여를 해제했습니다.`;
+    
+    // 모든 참여자에게 알림 전송
+    const planOwnerId = updatedPlan.userId; // 현재 계획의 참여자 목록
+
+      sendNotification(planOwnerId, notificationMessage);
+   
+
+    // 클라이언트에 성공 메시지 전송
+    socket.emit('leave_plan_success', {
+      message: '참여 해제 성공',
+      planId: planId,
+    });
+    
+  } catch (error) {
+    console.error('Error leaving plan:', error);
+    socket.emit('leave_plan_error', {
+      message: '참여 해제 실패',
+    });
+  }
+});
+
+
+
   // 클라이언트 연결 해제 이벤트
   socket.on('disconnect', () => {
     console.log('클라이언트 연결 해제:', socket.id);
@@ -677,3 +723,10 @@ app.post('/api/users/deletefollow', async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
+
+
+
+
+
+
