@@ -55,7 +55,6 @@ io.on('connection', (socket) => {
       
       // 클라이언트에 알림 전송
       socket.emit('receiveNotifications', notifications);
-      console.log(`사용자 ${userId}의 알림 전송됨: ${notifications.length}개`);
     } catch (error) {
       console.error('알림 조회 중 오류 발생:', error);
     }
