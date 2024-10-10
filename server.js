@@ -36,29 +36,42 @@ app.use(express.urlencoded({ extended: true }));
 io.on('connection', (socket) => {
   console.log('새로운 클라이언트 연결:', socket.id);
 
+
   //알림 모듈
   const sendNotification = async (userId, message) => {
     try {
-      const notification = new Notification({ userId, message });
-      await notification.save();
-      console.log(`알림 전송됨: ${message} to userId: ${userId}, \n notification: ${notification}`);
+        // userId로 User 모델에서 nickname 조회
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            console.error('사용자를 찾을 수 없습니다:', userId);
+            return;
+        }
+
+        // nickname으로 알림 메시지 저장
+        const notificationMessage = `${message}`;
+        const notification = new Notification({ userId, message: notificationMessage });
+        
+        await notification.save();
+        console.log(`알림 전송됨: ${notificationMessage} to userId: ${userId}, \n notification: ${notification}`);
     } catch (error) {
-      console.error('알림 전송 중 오류 발생:', error);
+        console.error('알림 전송 중 오류 발생:', error);
     }
-  };
-  
-  // 클라이언트의 사용자 ID를 받아서 알림을 조회하는 이벤트
-  socket.on('requestNotifications', async (userId) => {
+};
+
+// 클라이언트의 사용자 ID를 받아서 알림을 조회하는 이벤트
+socket.on('requestNotifications', async (userId) => {
     try {
-      // 특정 사용자 ID와 일치하는 알림 조회
-      const notifications = await Notification.find({ userId });
-      
-      // 클라이언트에 알림 전송
-      socket.emit('receiveNotifications', notifications);
+        // 특정 사용자 ID와 일치하는 알림 조회
+        const notifications = await Notification.find({ userId });
+
+        // 클라이언트에 알림 전송
+        socket.emit('receiveNotifications', notifications);
     } catch (error) {
-      console.error('알림 조회 중 오류 발생:', error);
+        console.error('알림 조회 중 오류 발생:', error);
     }
-  });
+});
+
   
   
 
@@ -156,83 +169,97 @@ io.on('connection', (socket) => {
 
 
   // 운동 계획 참여 
-  socket.on('participateInPlan', async ({ planId, userId }) => {
-    console.log('참여 요청 수신됨:', { planId, userId });
+socket.on('participateInPlan', async ({ planId, userId }) => {
+  console.log('참여 요청 수신됨:', { planId, userId });
 
-    try {
+  try {
       const plan = await Planning.findById(planId);
       if (!plan) {
-        socket.emit('participateResponse', { success: false, message: '운동 계획을 찾을 수 없습니다.' });
-        return;
+          socket.emit('participateResponse', { success: false, message: '운동 계획을 찾을 수 없습니다.' });
+          return;
       }
 
       // 사용자가 자신의 계획에 참여할 수 없도록 검사
       if (plan.userId.toString() === userId) {
-        socket.emit('participateResponse', { success: false, message: '본인의 계획에는 참여할 수 없습니다.' });
-        return;
+          socket.emit('participateResponse', { success: false, message: '본인의 계획에는 참여할 수 없습니다.' });
+          return;
       }
 
       if (plan.participants.includes(userId)) {
-        socket.emit('participateResponse', { success: false, message: '이미 참여하고 있는 계획입니다.' });
-        return;
+          socket.emit('participateResponse', { success: false, message: '이미 참여하고 있는 계획입니다.' });
+          return;
       }
 
       plan.participants.push(userId);
       await plan.save();
 
-      //알림 전송
-      await sendNotification(plan.userId, `${userId}님이 당신의 운동 계획에 참여했습니다.`);
-      
+      // 보낸 사용자의 닉네임 조회
+      const sender = await User.findById(userId);
+      if (!sender) {
+          console.error('사용자를 찾을 수 없습니다:', userId);
+          return;
+      }
+
+      // 알림 전송
+      await sendNotification(plan.userId, `${sender.nickname}님이 당신의 운동 계획에 참여했습니다.`);
       
       // 참여 성공 후 모든 클라이언트에 운동 계획 목록 전송
       const updatedPlans = await Planning.find({});
       const plansData = updatedPlans.map(plan => ({
-        participants: plan.participants,
+          participants: plan.participants,
       }));
 
       // 모든 클라이언트에 업데이트된 계획 전송
       io.emit('exercisePlansResponse', { success: true, plans: plansData });
       socket.emit('participateResponse', { success: true, message: '참여 요청이 성공적으로 처리되었습니다.' });
-    } catch (error) {
+  } catch (error) {
       console.error('운동 계획 참여 중 오류 발생:', error);
       socket.emit('participateResponse', { success: false, message: '서버 오류' });
-    }
-  });
-
-  // 운동 계획 해제
-socket.on('leave_plan', async ({ userId, planId }) => {
-  try {
-    // 계획에서 참여자 목록에서 사용자 ID 제거
-    await Planning.findByIdAndUpdate(planId, {
-      $pull: { participants: userId },
-    });
-
-    // 사용자에게 해당 계획에 대한 정보 업데이트
-    const updatedPlan = await Planning.findById(planId);
-    io.emit('plan_updated', updatedPlan);
-
-    // 알림 메시지 생성
-    const notificationMessage = `${userId}님이 계획에서 참여를 해제했습니다.`;
-    
-    // 모든 참여자에게 알림 전송
-    const planOwnerId = updatedPlan.userId; // 현재 계획의 참여자 목록
-
-      sendNotification(planOwnerId, notificationMessage);
-   
-
-    // 클라이언트에 성공 메시지 전송
-    socket.emit('leave_plan_success', {
-      message: '참여 해제 성공',
-      planId: planId,
-    });
-    
-  } catch (error) {
-    console.error('Error leaving plan:', error);
-    socket.emit('leave_plan_error', {
-      message: '참여 해제 실패',
-    });
   }
 });
+
+
+// 운동 계획 해제
+socket.on('leave_plan', async ({ userId, planId }) => {
+  try {
+      // 계획에서 참여자 목록에서 사용자 ID 제거
+      await Planning.findByIdAndUpdate(planId, {
+          $pull: { participants: userId },
+      });
+
+      // 사용자에게 해당 계획에 대한 정보 업데이트
+      const updatedPlan = await Planning.findById(planId);
+      io.emit('plan_updated', updatedPlan);
+
+      // 보낸 사용자의 닉네임 조회
+      const sender = await User.findById(userId);
+      if (!sender) {
+          console.error('사용자를 찾을 수 없습니다:', userId);
+          return;
+      }
+
+      // 알림 메시지 생성
+      const notificationMessage = `${sender.nickname}님이 계획에서 참여를 해제했습니다.`;
+      
+      // 모든 참여자에게 알림 전송
+      const planOwnerId = updatedPlan.userId; // 현재 계획의 작성자 ID
+
+      await sendNotification(planOwnerId, notificationMessage);
+
+      // 클라이언트에 성공 메시지 전송
+      socket.emit('leave_plan_success', {
+          message: '참여 해제 성공',
+          planId: planId,
+      });
+
+  } catch (error) {
+      console.error('Error leaving plan:', error);
+      socket.emit('leave_plan_error', {
+          message: '참여 해제 실패',
+      });
+  }
+});
+
 
 
 
@@ -255,7 +282,7 @@ app.post("/api/users/login", async (req, res) => {
     if (!user) {
       return res.json({
         loginSuccess: false,
-        message: "Username을 다시 확인하세요.",
+        message: "아이디를 다시 확인하세요.",
       });
     }
 
@@ -289,7 +316,7 @@ app.post('/api/users/signup', async (req, res) => {
     console.log('회원가입 성공:', userInfo);
     return res.status(200).json({ success: true, token });
   } catch (err) {
-    console.error('회원가입 실패:', err);
+    console.error('회원가입 실패:', err.code, err);
 
     // 중복 키 에러 처리
     if (err.code === 11000) {
@@ -342,6 +369,7 @@ app.get('/api/users/planinfo', async (req, res) => {
             selected_location: plan.selected_location,
             participants: plan.participants,
             isPrivate: plan.isPrivate,
+            planTitle: plan.planTitle,
           };
         }));
         return res.status(200).json({ success: true, plans: plansWithUserDetails });
@@ -414,7 +442,7 @@ app.get('/api/users/userinfo', async (req, res) => {
 // 운동 계획 추가
 app.post('/api/users/planning', async (req, res) => {
   try {
-    const { selected_date, selected_exercise, selected_participants, selected_startTime, selected_endTime, selected_location, isPrivate, participants } = req.body;
+    const { selected_date, selected_exercise, planTitle, selected_participants, selected_startTime, selected_endTime, selected_location, isPrivate, participants} = req.body;
 
     // Authorization 헤더에서 토큰 추출
     const authHeader = req.headers.authorization;
@@ -431,6 +459,7 @@ app.post('/api/users/planning', async (req, res) => {
       userId,
       selected_date,
       selected_exercise,
+      planTitle,
       selected_participants,
       selected_startTime,
       selected_endTime,
@@ -438,7 +467,9 @@ app.post('/api/users/planning', async (req, res) => {
       isPrivate,
       participants,
     });
-
+    if (!participants || !Array.isArray(participants)) {
+      participants = []; // 빈 배열로 설정
+    }
     await planning.save();
     res.status(200).json({ success: true, message: '운동 계획이 성공적으로 저장되었습니다.' });
   } catch (err) {

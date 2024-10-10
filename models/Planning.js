@@ -14,6 +14,10 @@ const planningSchema = mongoose.Schema({
     type: String,
     required: true
   },
+  planTitle: {
+    type: String,
+    required: true,
+  },
   selected_participants: {
     type: Number,
     required: true
@@ -33,8 +37,7 @@ const planningSchema = mongoose.Schema({
   participants: { // 새로운 필드 추가
     type: [mongoose.Schema.Types.ObjectId], // ObjectId 배열로 설정
     ref: 'User', // User 모델 참조
-    default: [], // 기본값으로 빈 배열 설정,
-    unique: true,
+    default: [], // 기본값으로 빈 배열 설정
   },
   isPrivate: {
     type: Boolean,
